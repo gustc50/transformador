@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ofx2pdf"
+version = "1.0.0"
+description = "Converte extratos bancários OFX (Banco do Brasil, Sicoob e demais bancos) em relatórios PDF"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["reportlab>=4.0", "flask>=3.0"]
+
+[project.scripts]
+ofx2pdf = "ofx2pdf.__main__:main"
+
+[tool.setuptools]
+packages = ["ofx2pdf"]
+
+[tool.setuptools.package-data]
+ofx2pdf = ["templates/*.html"]
