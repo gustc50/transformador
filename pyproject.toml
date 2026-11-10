@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Converte extratos bancários OFX (Banco do Brasil, Sicoob e demais bancos) em relatórios PDF"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["reportlab>=4.0", "flask>=3.0"]
+dependencies = ["reportlab>=4.0,<6", "flask>=3.0,<4"]
 
 [project.scripts]
 ofx2pdf = "ofx2pdf.__main__:main"

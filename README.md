@@ -15,13 +15,19 @@ com tratamento específico para os formatos do **Banco do Brasil** e do **Sicoob
 
 ### Opção 1 — Interface no navegador (mais fácil)
 
-1. Instale o [Python 3](https://www.python.org/downloads/) (no Windows, marque **“Add Python to PATH”**).
-2. Dê dois cliques em **`iniciar_windows.bat`** (Windows) ou rode `./iniciar.sh` (Linux/macOS).
-   Na primeira vez ele instala as dependências automaticamente.
+1. Instale o [Python 3.9 ou mais novo](https://www.python.org/downloads/) — no Windows, marque **“Add Python to PATH”**
+   na primeira tela da instalação. (Se esquecer, o atalho abaixo avisa e abre a página de download.)
+2. **Windows:** dê dois cliques em **`Abrir Conversor OFX.bat`**.
+   **Linux/macOS:** rode `./iniciar.sh`.
+   Na primeira vez ele cria um ambiente isolado na pasta `.venv` e instala os componentes (precisa de internet);
+   nas próximas, abre direto.
 3. O navegador abre em `http://127.0.0.1:5000`. Arraste um ou mais arquivos `.ofx`, informe (opcionalmente)
    o nome do titular e clique em **Gerar PDF**. Vários arquivos são baixados juntos em um `.zip`.
+4. Mantenha a janela preta aberta enquanto usa; feche-a para encerrar. Se clicar no atalho com o conversor
+   já aberto, ele apenas abre o navegador de novo.
 
-Os arquivos são processados localmente, no próprio computador — nada é enviado para a internet.
+Dica: para ter o atalho na área de trabalho, clique com o botão direito em `Abrir Conversor OFX.bat` →
+**Enviar para** → **Área de trabalho (criar atalho)**.
 
 ### Opção 2 — Linha de comando
 
@@ -47,7 +53,7 @@ python -m ofx2pdf pasta_com_ofx/ -o pasta_de_saida/
 from ofx2pdf import ler_ofx, gerar_pdf
 
 arquivo = ler_ofx("extrato.ofx", titular="Empresa Exemplo Ltda")
-gerar_pdf(arquivo, "extrato.pdf", titular="Empresa Exemplo Ltda")
+gerar_pdf(arquivo, "extrato.pdf")
 ```
 
 ## Como pagador e recebedor são identificados
@@ -74,6 +80,27 @@ O nome do titular normalmente não vem no OFX; informe-o com `--titular` (ou no 
 
 Linhas que são apenas informativas de saldo (ex.: `Saldo Anterior`, `S A L D O`, comuns no Banco do Brasil) não são somadas como movimentação.
 
+## Segurança
+
+O conversor foi feito para rodar **somente no seu computador**:
+
+- a interface escuta apenas em `127.0.0.1` — outros computadores da rede não conseguem acessá-la;
+- requisições com endereço (cabeçalho *Host*) diferente de `localhost`/`127.0.0.1` são recusadas,
+  o que impede que um site malicioso aberto no navegador use o conversor (*DNS rebinding*);
+- os arquivos enviados são processados **em memória** e nunca gravados em disco nem enviados à internet;
+- nomes de arquivo são saneados (sem `..\`, `/` ou caracteres especiais) antes de irem para o PDF/ZIP;
+- textos vindos do OFX são escapados antes de entrar no PDF e na página (sem injeção de HTML/markup);
+- arquivos malformados ou maliciosos (aninhamento excessivo, comentários sem fim, valores `NaN`/`Infinity`,
+  campos gigantes) geram uma mensagem de erro em vez de travar ou derrubar o programa;
+- limite de 50 MB por envio, cabeçalhos HTTP de segurança (CSP, `X-Frame-Options`, `nosniff`) e modo debug desligado.
+
+Verificações feitas: análise estática com [bandit](https://bandit.readthedocs.io/) (nenhum problema) e
+[pip-audit](https://pypi.org/project/pip-audit/) nas dependências (nenhuma vulnerabilidade conhecida). Para repetir:
+
+```bash
+pip install bandit pip-audit && bandit -r ofx2pdf && pip-audit -r requirements.txt
+```
+
 ## Exemplos e testes
 
 A pasta `exemplos/` tem arquivos OFX **fictícios** no formato do Banco do Brasil, do Sicoob e de um OFX 2.x (XML) genérico.
@@ -94,6 +121,6 @@ ofx2pdf/
   contraparte.py  categorias, CPF/CNPJ, pagador e recebedor
   bancos.py       códigos e cores dos bancos
   pdf.py          montagem do relatório PDF (ReportLab)
-  web.py          interface web (Flask)
+  web.py          interface web local (Flask)
   __main__.py     linha de comando
 ```

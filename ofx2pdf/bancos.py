@@ -53,6 +53,13 @@ BANCOS = {
     "756": "Sicoob",
 }
 
+# Alguns bancos preenchem o BANKID com o ISPB (8 dígitos) em vez do código COMPE.
+ISPB = {
+    "00000000": "001", "02038232": "756", "00360305": "104", "60746948": "237",
+    "60701190": "341", "90400888": "033", "18236120": "260", "01181521": "748",
+    "00416968": "077",
+}
+
 # Cor principal / cor de destaque de cada banco (usadas apenas no cabeçalho do PDF)
 CORES = {
     "001": ("#003DA5", "#FCE600"),   # Banco do Brasil
@@ -67,8 +74,7 @@ CORES = {
 }
 COR_PADRAO = ("#1F3A5F", "#4FA3D1")
 
-# Termos presentes em SIGNON/ORG ou no FID que identificam o banco quando
-# o BANKID vem vazio ou fora do padrão.
+# Nomes em SIGNON/ORG ou FID que identificam o banco quando o BANKID vem vazio ou fora do padrão.
 _APELIDOS = [
     (re.compile(r"banco do brasil|\bbb\b", re.I), "001"),
     (re.compile(r"sicoob|bancoob", re.I), "756"),
@@ -83,42 +89,26 @@ _APELIDOS = [
 
 
 def normalizar_codigo(bankid: str) -> str:
-    """'0756', '756-0', '001' -> '756', '001'.
-
-    Alguns bancos preenchem o BANKID com o ISPB (8 dígitos). Nesse caso
-    devolvemos o valor original, que será resolvido pelos apelidos.
-    """
-    if not bankid:
-        return ""
-    digitos = re.sub(r"\D", "", bankid.split("-")[0])
-    if not digitos:
-        return ""
-    if len(digitos) > 4:
+    """'0756', '756-0', '001' -> '756', '001'. ISPB (mais de 4 dígitos) é mantido como está."""
+    digitos = re.sub(r"\D", "", (bankid or "").split("-")[0])
+    if not digitos or len(digitos) > 4:
         return digitos
     return digitos.lstrip("0").zfill(3)
 
 
 def identificar_banco(bankid: str, org: str = "", fid: str = "") -> tuple[str, str]:
-    """Retorna (codigo, nome) do banco."""
-    codigo = normalizar_codigo(bankid)
-    if codigo in BANCOS:
-        return codigo, BANCOS[codigo]
-    # ISPB conhecidos
-    ispb = {"00000000": "001", "02038232": "756", "00360305": "104", "60746948": "237",
-            "60701190": "341", "90400888": "033", "18236120": "260", "01181521": "748",
-            "00416968": "077"}
-    if codigo in ispb:
-        c = ispb[codigo]
-        return c, BANCOS[c]
+    """Retorna (codigo, nome) do banco usando BANKID, depois FID e ORG."""
+    for candidato in (bankid, fid if (fid or "").strip().isdigit() else ""):
+        codigo = normalizar_codigo(candidato)
+        codigo = ISPB.get(codigo, codigo)
+        if codigo in BANCOS:
+            return codigo, BANCOS[codigo]
     for texto in (org, fid):
-        fid_cod = normalizar_codigo(texto) if texto and texto.strip().isdigit() else ""
-        if fid_cod in BANCOS:
-            return fid_cod, BANCOS[fid_cod]
-        for padrao, c in _APELIDOS:
+        for padrao, codigo in _APELIDOS:
             if texto and padrao.search(texto):
-                return c, BANCOS[c]
-    nome = org.strip() if org else ""
-    return codigo, nome or (f"Banco {codigo}" if codigo else "Banco não identificado")
+                return codigo, BANCOS[codigo]
+    codigo = normalizar_codigo(bankid)
+    return codigo, (org or "").strip() or (f"Banco {codigo}" if codigo else "Banco não identificado")
 
 
 def cores_do_banco(codigo: str) -> tuple[str, str]:

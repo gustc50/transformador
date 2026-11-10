@@ -126,7 +126,7 @@ def test_moeda():
 def test_pdf_contem_informacoes():
     from pypdf import PdfReader
     arq = ler_ofx(str(EX / "sicoob_exemplo.ofx"), titular=TITULAR)
-    pdf = gerar_pdf(arq, titular=TITULAR)
+    pdf = gerar_pdf(arq)
     texto = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages)
     for trecho in ["Sicoob", "123456-7", "JOAO PEREIRA DOS SANTOS", "DISTRIBUIDORA GAMA LTDA",
                    "8.638,14", "Pagador", "Recebedor", TITULAR]:
@@ -148,3 +148,61 @@ def test_web():
                      content_type="multipart/form-data")
     assert r.mimetype == "application/zip"
     assert sorted(zipfile.ZipFile(io.BytesIO(r.data)).namelist()) == ["a.pdf", "b.pdf"]
+
+
+# --------------------------------------------------------------------------
+# Segurança: arquivos malformados/maliciosos e interface web
+# --------------------------------------------------------------------------
+
+_BASE = (b"<OFX><STMTRS><BANKACCTFROM><BANKID>001<ACCTID>1</BANKACCTFROM><BANKTRANLIST>"
+         b"<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260101<TRNAMT>%s<FITID>1<MEMO>%s</STMTTRN>"
+         b"</BANKTRANLIST><LEDGERBAL><BALAMT>10</LEDGERBAL></STMTRS></OFX>")
+
+
+@pytest.mark.parametrize("dados", [
+    b"<OFX>" + b"<A>" * 20000,               # aninhamento profundo (antes: RecursionError)
+    b"<OFX>" + b"<!--" * 50000,              # comentários sem fechamento (antes: travava)
+    _BASE % (b"NaN", b"X"),                  # valores não numéricos (antes: erro inesperado)
+    _BASE % (b"Infinity", b"X"),
+    _BASE % (b"1e999999", b"X"),
+    _BASE % (b"99999999999999999999", b"X"),
+], ids=["profundo", "comentarios", "nan", "infinito", "expoente", "gigante"])
+def test_arquivo_malicioso_vira_erro_controlado(dados):
+    import time
+    inicio = time.monotonic()
+    with pytest.raises(ErroOFX):
+        ler_ofx_bytes(dados)
+    assert time.monotonic() - inicio < 2
+
+
+def test_campos_longos_sao_limitados_e_rapidos():
+    import time
+    inicio = time.monotonic()
+    arq = ler_ofx_bytes(_BASE % (b"-1.00", b"A" + b" " * 200000 + b"B" * 100000))
+    assert len(arq.extratos[0].transacoes[0].complemento) <= 2000
+    gerar_pdf(arq)
+    assert time.monotonic() - inicio < 5
+
+
+def test_markup_do_ofx_nao_e_interpretado_no_pdf():
+    from pypdf import PdfReader
+    arq = ler_ofx_bytes(_BASE % (b"-1.00", b'&lt;img src="/etc/passwd"/&gt; <b>negrito</b>'))
+    texto = "".join(p.extract_text() for p in PdfReader(io.BytesIO(gerar_pdf(arq))).pages)
+    assert '<img src="/etc/passwd"/>' in texto
+
+
+def test_web_seguranca():
+    from ofx2pdf.web import _nome_seguro, app
+    cliente = app.test_client()
+    assert cliente.get("/", headers={"Host": "atacante.com"}).status_code == 403
+    r = cliente.get("/")
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
+
+    assert _nome_seguro("..\\..\\Windows\\evil.ofx", ".pdf") == "evil.pdf"
+    assert _nome_seguro("../../etc/<x>.ofx", ".pdf") == "x.pdf"
+    assert _nome_seguro("", ".pdf") == "extrato.pdf"
+
+    r = cliente.post("/converter", data={"arquivos": (io.BytesIO(b"x"), "<script>alert(1)</script>.ofx")},
+                     content_type="multipart/form-data")
+    assert r.status_code == 400 and b"<script>alert" not in r.data
